@@ -2,4 +2,79 @@ resource "aws_s3_bucket" "site" {
   bucket = var.bucket_name
 }
 
-data "aws_s3_buckets" "all" {}
+resource "aws_s3_bucket_versioning" "site" {
+  bucket = aws_s3_bucket.site.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_website_configuration" "site" {
+  bucket = aws_s3_bucket.site.id
+
+  index_document {
+    suffix = "index.html"
+  }
+}
+
+locals {
+  site_files = fileset("../site", "**") # adjust path if needed
+}
+
+resource "aws_s3_object" "site_files" {
+  for_each = { for file in local.site_files : file => file }
+
+  bucket = aws_s3_bucket.site.id
+  key    = each.value
+  source = "../site/${each.value}"
+
+  depends_on = [aws_s3_bucket_website_configuration.site]
+
+
+  # Guess content type based on extension
+  content_type = lookup(
+    {
+      html = "text/html"
+      css  = "text/css"
+      js   = "application/javascript"
+      json = "application/json"
+      png  = "image/png"
+      jpg  = "image/jpeg"
+      jpeg = "image/jpeg"
+      gif  = "image/gif"
+      svg  = "image/svg+xml"
+    },
+    regex("\\.([^.]+)$", each.value)[0],
+    "binary/octet-stream"
+  )
+
+  etag = filemd5("../site/${each.value}")
+}
+
+
+# # Let this bucket be publicly readable for website testing
+# resource "aws_s3_bucket_public_access_block" "site_public" {
+#   bucket                  = aws_s3_bucket.site.id
+#   block_public_acls       = false
+#   block_public_policy     = false
+#   ignore_public_acls      = false
+#   restrict_public_buckets = false
+# }
+
+# resource "aws_s3_bucket_policy" "public_read" {
+#   bucket = aws_s3_bucket.site.id
+#   policy = jsonencode({
+#     Version = "2012-10-17",
+#     Statement = [{
+#       Sid: "AllowPublicReadOfWebsite",
+#       Effect: "Allow",
+#       Principal = "*",
+#       Action: "s3:GetObject",
+#       Resource: "${aws_s3_bucket.site.arn}/*"
+#     }]
+#   })
+#   depends_on = [aws_s3_bucket_public_access_block.site_public]
+# }
+
+

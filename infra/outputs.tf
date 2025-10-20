@@ -3,6 +3,7 @@ output "bucket_name" {
   description = "Name of the created S3 bucket"
 }
 
-output "all_bucket_names" {
-  value = data.aws_s3_buckets.all.names
+output "website_endpoint" {
+  value       = module.s3_private_site.website_endpoint
+  description = "Open this URL to view the site"
 }
