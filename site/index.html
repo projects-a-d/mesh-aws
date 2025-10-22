@@ -1,8 +1,92 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Mesh AWS Demo</title></head>
-<body style="font-family:system-ui;padding:2rem">
-  <h1>✅ S3 static site deployed!</h1>
-  <p>This page was uploaded via Terraform.</p>
-</body>
+  <head>
+    <meta charset="utf-8">
+    <title>Mesh AWS Demo</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="stylesheet" href="styles.css">
+    <script>
+      window.APP_CONFIG = window.APP_CONFIG || {
+        apiBase: "https://p26ujrcetd.execute-api.us-east-1.amazonaws.com"
+      };
+      window.MESH_LINK_SDK_URL = window.MESH_LINK_SDK_URL || "https://cdn.meshconnect.com/web-sdk/latest/mesh.js";
+    </script>
+  </head>
+  <body>
+    <main class="layout">
+      <header>
+        <h1>Mesh Sandbox Shoes Demo</h1>
+        <p class="lede">
+          Connect a Coinbase sandbox account with Mesh Link, pay for $50 shoes in USDC, then read the portfolio – all from this static site backed by the AWS API you just deployed.
+        </p>
+        <div id="status" class="status"></div>
+      </header>
+
+      <section class="card">
+        <h2>1. Connect to Coinbase via Mesh Link</h2>
+        <p>
+          Click the button to fetch a fresh Link token from the Lambda API and launch the Mesh Web SDK. The sandbox MFA code is
+          <code>123456</code>.
+        </p>
+        <button id="connect-btn" class="primary">Launch Mesh Link</button>
+        <div id="link-diagnostics" class="note"></div>
+      </section>
+
+      <section class="card">
+        <h2>2. Pay for the $50 shoes</h2>
+        <form id="transfer-form" class="form">
+          <label>
+            Access token
+            <input id="access-token" name="accessToken" placeholder="Returned by Mesh Link" autocomplete="off">
+          </label>
+
+          <div class="form-row">
+            <label>
+              Amount (USDC)
+              <input type="number" id="amount" name="amount" value="50" min="0" step="0.01">
+            </label>
+            <label>
+              Network
+              <select id="network" name="network">
+                <option value="ethereum">Ethereum</option>
+                <option value="polygon">Polygon</option>
+                <option value="arbitrum">Arbitrum</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Destination wallet
+            <input id="to-address" name="toAddress" value="0x0Ff0000f0A0f0000F0F000000000ffFf00f0F0f0">
+          </label>
+
+          <label>
+            Two-factor code
+            <input id="mfa" name="twoFactorCode" value="123456">
+          </label>
+
+          <button type="submit" class="primary">Send Transfer</button>
+        </form>
+        <div class="note">
+          The payment endpoint defaults to USDC, Ethereum, memo “Shoes”, and MFA code 123456. Adjust above if you want to replay on another chain.
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3. Show Coinbase portfolio</h2>
+        <p>Fetch balances and positions using the same access token.</p>
+        <button id="portfolio-btn" class="secondary">Refresh Portfolio</button>
+      </section>
+
+      <section class="card output">
+        <div class="output-header">
+          <h2>API responses</h2>
+          <button id="clear-output" class="link-like" type="button">Clear</button>
+        </div>
+        <pre id="out" aria-live="polite">{}</pre>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
 </html>
