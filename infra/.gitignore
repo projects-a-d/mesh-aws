@@ -19,3 +19,4 @@ crash.log
 
 # Logs
 *.log
+.build/
