@@ -19,7 +19,8 @@ resource "aws_s3_bucket_website_configuration" "site" {
 }
 
 locals {
-  site_files = fileset("../site", "**") # adjust path if needed
+  site_dir   = "${path.root}/../site"
+  site_files = fileset(local.site_dir, "**")
 }
 
 resource "aws_s3_object" "site_files" {
@@ -27,7 +28,7 @@ resource "aws_s3_object" "site_files" {
 
   bucket = aws_s3_bucket.site.id
   key    = each.value
-  source = "../site/${each.value}"
+  source = "${local.site_dir}/${each.value}"
 
   depends_on = [aws_s3_bucket_website_configuration.site]
 
@@ -49,7 +50,7 @@ resource "aws_s3_object" "site_files" {
     "binary/octet-stream"
   )
 
-  etag = filemd5("../site/${each.value}")
+  etag = filemd5("${local.site_dir}/${each.value}")
 }
 
 
@@ -76,5 +77,4 @@ resource "aws_s3_bucket_public_access_block" "site_private" {
 #   })
 #   depends_on = [aws_s3_bucket_public_access_block.site_public]
 # }
-
 
