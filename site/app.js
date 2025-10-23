@@ -1,29 +1,24 @@
+import { createLink } from "https://esm.sh/@meshconnect/web-link-sdk@latest";
+
 const config = window.APP_CONFIG || {};
 const apiBase = (config.apiBase || "").replace(/\/$/, "");
+const clientId = config.meshClientId || config.clientId || "";
 
-const defaultResult = {};
-const state = {
-  linkToken: null,
-  accessToken: "",
-  lastResponses: [],
-};
-
-const outEl = document.getElementById("out");
 const statusEl = document.getElementById("status");
 const diagnosticsEl = document.getElementById("link-diagnostics");
-const accessTokenInput = document.getElementById("access-token");
+const outputEl = document.getElementById("out");
 const connectBtn = document.getElementById("connect-btn");
-const transferForm = document.getElementById("transfer-form");
+const payBtn = document.getElementById("pay-btn");
 const portfolioBtn = document.getElementById("portfolio-btn");
 const clearBtn = document.getElementById("clear-output");
+const accessTokenInput = document.getElementById("access-token");
+const accountIdInput = document.getElementById("account-id");
+const portfolioTypeInput = document.getElementById("portfolio-type");
 
-let meshSdkPromise;
-
-if (!apiBase) {
-  setStatus("Missing API base URL. Update window.APP_CONFIG.apiBase in index.html.", "error");
-  connectBtn.disabled = true;
-  portfolioBtn.disabled = true;
-}
+const state = {
+  latestAuthToken: "",
+  latestAccountId: "",
+};
 
 function setStatus(message, type = "info") {
   if (!statusEl) return;
@@ -34,76 +29,71 @@ function setStatus(message, type = "info") {
   }
 }
 
-function appendResult(title, payload) {
-  state.lastResponses.unshift({ title, at: new Date().toISOString(), payload });
-  if (state.lastResponses.length > 6) {
-    state.lastResponses.pop();
-  }
-  outEl.textContent = JSON.stringify(state.lastResponses, null, 2);
-}
-
-function setDiagnostics(msg) {
-  diagnosticsEl.textContent = msg || "";
-}
-
-function loadScript(url) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = url;
-    script.async = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => reject(new Error(`Failed to load ${url}`));
-    document.head.appendChild(script);
-  });
-}
-
-async function ensureMeshSdk() {
-  if (window.MeshLink || (window.Mesh && (window.Mesh.Link || window.Mesh.open))) {
+function setDiagnostics(value) {
+  if (!diagnosticsEl) return;
+  if (!value) {
+    diagnosticsEl.textContent = "";
     return;
   }
-  if (!meshSdkPromise) {
-    const scriptUrl = window.MESH_LINK_SDK_URL || "https://cdn.meshconnect.com/web-sdk/latest/mesh.js";
-    meshSdkPromise = loadScript(scriptUrl).catch((err) => {
-      meshSdkPromise = null;
-      throw err;
-    });
-  }
-  await meshSdkPromise;
+  diagnosticsEl.textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
-function resolveMeshLauncher(config) {
-  if (window.MeshLink && typeof window.MeshLink === "function") {
-    return window.MeshLink(config);
-  }
-  if (window.MeshLink && typeof window.MeshLink.create === "function") {
-    return window.MeshLink.create(config);
-  }
-  if (window.Mesh && typeof window.Mesh.Link?.create === "function") {
-    return window.Mesh.Link.create(config);
-  }
-  if (window.Mesh && typeof window.Mesh.open === "function") {
-    return {
-      open: () => window.Mesh.open(config),
-    };
-  }
-  if (window.MeshConnectLink && typeof window.MeshConnectLink.create === "function") {
-    return window.MeshConnectLink.create(config);
-  }
-  return null;
+function log(label, payload) {
+  if (!outputEl) return;
+  const time = new Date().toLocaleTimeString();
+  const text = `[${time}] ${label}:\n${JSON.stringify(payload, null, 2)}\n\n`;
+  outputEl.textContent = text + (outputEl.textContent || "");
 }
 
-async function meshFetch(path, options = {}) {
+function rememberAuth(details) {
+  if (details?.token) {
+    state.latestAuthToken = details.token;
+  }
+  if (details?.accountId) {
+    state.latestAccountId = details.accountId;
+  }
+  if (accessTokenInput) {
+    accessTokenInput.value = state.latestAuthToken || "";
+  }
+  if (accountIdInput && !accountIdInput.value && state.latestAccountId) {
+    accountIdInput.value = state.latestAccountId;
+  }
+  if (state.latestAuthToken) {
+    setStatus("Access token stored — ready for portfolio calls.", "success");
+  }
+}
+
+function pickAuthToken(payload) {
+  if (typeof payload?.accessToken === "string") return payload.accessToken;
+  if (payload?.accessToken?.accessToken) return payload.accessToken.accessToken;
+  const nested =
+    payload?.accessToken?.accountTokens?.[0]?.token ||
+    payload?.accessToken?.accountTokens?.[0]?.accessToken;
+  if (nested) return nested;
+  const legacy =
+    payload?.accessTokens?.[0]?.token ||
+    payload?.accessTokens?.[0]?.accessToken;
+  return legacy || "";
+}
+
+function pickAccountId(payload) {
+  return (
+    payload?.accessToken?.accountTokens?.[0]?.account?.accountId ||
+    payload?.accessTokens?.[0]?.account?.accountId ||
+    ""
+  );
+}
+
+async function meshPost(path, body) {
   if (!apiBase) {
     throw new Error("API base URL is not configured");
   }
   const resp = await fetch(`${apiBase}${path}`, {
-    ...options,
-    headers: {
-      "content-type": "application/json",
-      ...(options.headers || {}),
-    },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
   });
-  const data = await resp.json().catch(() => defaultResult);
+  const data = await resp.json().catch(() => ({}));
   if (!resp.ok) {
     const err = new Error(data?.error || `Request failed (${resp.status})`);
     err.details = data;
@@ -113,144 +103,137 @@ async function meshFetch(path, options = {}) {
   return data;
 }
 
-function rememberAccessToken(token) {
-  if (!token) return;
-  state.accessToken = token;
-  accessTokenInput.value = token;
-  setStatus("Access token stored — ready for payment and portfolio calls.", "success");
+function ensureConfigured() {
+  const problems = [];
+  if (!apiBase) problems.push("Missing API base URL (window.APP_CONFIG.apiBase).");
+  if (!clientId) problems.push("Missing Mesh client ID (window.APP_CONFIG.meshClientId).");
+  if (problems.length) {
+    setStatus(problems.join(" "), "error");
+    if (connectBtn) connectBtn.disabled = true;
+    if (payBtn) payBtn.disabled = true;
+    if (portfolioBtn) portfolioBtn.disabled = true;
+    return false;
+  }
+  return true;
 }
 
+const meshLink = ensureConfigured()
+  ? createLink({
+      clientId,
+      onIntegrationConnected: (payload) => {
+        log("onIntegrationConnected", payload);
+        const token = pickAuthToken(payload);
+        const accountId = pickAccountId(payload);
+        rememberAuth({ token, accountId });
+        log("pickedAuthDetails", {
+          latestAuthToken: token ? "[set]" : null,
+          latestAccountId: accountId || null,
+        });
+        setDiagnostics("");
+        window.alert("Connected! Use MFA code 123456 in the sandbox when prompted.");
+      },
+      onTransferFinished: (result) => {
+        log("onTransferFinished", result || {});
+        if (result?.status === "success") {
+          window.alert(`USDC transfer completed.\nTxId: ${result.txId || "(see logs)"}`);
+        } else if (result) {
+          window.alert(`Transfer finished with status ${result.status || "unknown"}`);
+        }
+      },
+      onExit: (err, summary) => {
+        log("onExit", { err, summary });
+        setStatus("Mesh Link closed.");
+      },
+      onEvent: (name, metadata) => log(`onEvent:${name}`, metadata || {}),
+    })
+  : null;
+
 async function handleConnectClick() {
+  if (!ensureConfigured()) return;
   setStatus("Requesting Mesh link token...");
   setDiagnostics("");
   connectBtn.disabled = true;
   try {
-    const payload = {
-      products: ["transactions", "portfolio", "transfer"],
-      provider: "coinbase",
-    };
-    const tokenResp = await meshFetch("/mesh/link-token", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-    appendResult("link-token", tokenResp);
-    state.linkToken = tokenResp.linkToken || tokenResp.token || tokenResp.link_token;
-    if (!state.linkToken) {
+    const resp = await meshPost("/mesh/link-token/connect");
+    log("link-token/connect", resp);
+    const token = resp?.content?.linkToken || resp?.linkToken || resp?.token;
+    if (!token) {
       throw new Error("Mesh did not return a linkToken. Check diagnostics or secret configuration.");
     }
-    await ensureMeshSdk();
-    const launcher = resolveMeshLauncher({
-      linkToken: state.linkToken,
-      onSuccess: (result) => {
-        appendResult("link-success", result);
-        const token =
-          result?.accessToken ||
-          result?.access_token ||
-          result?.data?.accessToken ||
-          result?.data?.access_token;
-        if (token) {
-          rememberAccessToken(token);
-        } else {
-          setStatus("Link succeeded – please copy the access token from the JSON payload.", "success");
-        }
-      },
-      onExit: (result) => {
-        appendResult("link-exit", result || {});
-        setStatus("Mesh Link closed.", "info");
-      },
-      onEvent: (eventName, metadata) => {
-        appendResult(`link-event:${eventName}`, metadata || {});
-      },
-    });
-    if (!launcher || typeof launcher.open !== "function") {
-      throw new Error("Mesh Web SDK is loaded but no open() function is available. Update MESH_LINK_SDK_URL to the latest script.");
-    }
-    launcher.open();
+    meshLink?.openLink(token);
     setStatus("Mesh Link opened — complete the Coinbase flow.");
   } catch (err) {
     console.error(err);
     setStatus(err.message || "Failed to launch Mesh Link", "error");
-    setDiagnostics(err.details ? JSON.stringify(err.details, null, 2) : "");
+    setDiagnostics(err.details || err.message);
   } finally {
     connectBtn.disabled = false;
   }
 }
 
-async function handleTransferSubmit(event) {
-  event.preventDefault();
-  const formData = new FormData(transferForm);
-  const accessToken = formData.get("accessToken")?.trim();
-  const amount = parseFloat(formData.get("amount"));
-  const toAddress = formData.get("toAddress")?.trim();
-  const network = formData.get("network") || "ethereum";
-  const twoFactorCode = formData.get("twoFactorCode")?.trim() || "123456";
-
-  if (!accessToken) {
-    setStatus("Enter an access token before sending a transfer.", "error");
-    return;
-  }
-  if (!toAddress) {
-    setStatus("Destination wallet address is required.", "error");
-    return;
-  }
-
-  setStatus("Sending transfer request...");
+async function handlePayClick() {
+  if (!ensureConfigured()) return;
+  setStatus("Preparing transfer Link token...");
+  setDiagnostics("");
+  payBtn.disabled = true;
   try {
-    const resp = await meshFetch("/mesh/pay", {
-      method: "POST",
-      body: JSON.stringify({
-        accessToken,
-        amount,
-        network,
-        toAddress,
-        memo: "Shoes",
-        asset: "USDC",
-        twoFactorCode,
-      }),
-    });
-    appendResult("pay", resp);
-    setStatus("Transfer created in Mesh sandbox.", "success");
+    const resp = await meshPost("/mesh/link-token/pay");
+    log("link-token/pay", resp);
+    const token = resp?.content?.linkToken || resp?.linkToken || resp?.token;
+    if (!token) {
+      throw new Error("Mesh did not return a linkToken for payment.");
+    }
+    meshLink?.openLink(token);
+    window.alert("When prompted, use sandbox MFA code 123456 to approve the transfer.");
+    setStatus("Mesh Link opened for payment.");
   } catch (err) {
     console.error(err);
-    setStatus(err.message || "Transfer failed", "error");
-    appendResult("pay-error", err.details || { message: err.message });
+    setStatus(err.message || "Failed to prepare transfer", "error");
+    setDiagnostics(err.details || err.message);
+  } finally {
+    payBtn.disabled = false;
   }
 }
 
 async function handlePortfolioClick() {
-  const token = accessTokenInput.value.trim();
-  if (!token) {
-    setStatus("Enter an access token before fetching portfolio.", "error");
+  if (!ensureConfigured()) return;
+  const authToken = (accessTokenInput?.value || state.latestAuthToken || "").trim();
+  if (!authToken) {
+    setStatus("Connect first to obtain an auth token.", "error");
     return;
   }
 
+  const accountId = accountIdInput?.value.trim() || state.latestAccountId || undefined;
+  const type = portfolioTypeInput?.value.trim() || "coinbase";
+
   setStatus("Requesting portfolio...");
   try {
-    const resp = await meshFetch(`/mesh/portfolio?accessToken=${encodeURIComponent(token)}`, {
-      method: "GET",
+    const resp = await meshPost("/mesh/portfolio", {
+      authToken,
+      accountId,
+      type,
     });
-    appendResult("portfolio", resp);
+    log("portfolio", resp);
     setStatus("Portfolio retrieved.", "success");
   } catch (err) {
     console.error(err);
     setStatus(err.message || "Portfolio request failed", "error");
-    appendResult("portfolio-error", err.details || { message: err.message });
+    setDiagnostics(err.details || err.message);
   }
 }
 
 function handleClear() {
-  state.lastResponses = [];
-  outEl.textContent = JSON.stringify({}, null, 2);
+  if (outputEl) {
+    outputEl.textContent = "";
+  }
   setStatus("Cleared output.");
 }
 
 connectBtn?.addEventListener("click", handleConnectClick);
-transferForm?.addEventListener("submit", handleTransferSubmit);
+payBtn?.addEventListener("click", handlePayClick);
 portfolioBtn?.addEventListener("click", handlePortfolioClick);
 clearBtn?.addEventListener("click", handleClear);
 
-if (config.defaultAccessToken) {
-  rememberAccessToken(config.defaultAccessToken);
-} else {
+if (ensureConfigured() && !state.latestAuthToken) {
   setStatus("Ready — connect your Coinbase sandbox account to begin.");
 }
