@@ -14,62 +14,120 @@
     </script>
   </head>
   <body>
-    <main class="layout">
-      <header>
-        <h1>Mesh Sandbox — Minimal E2E</h1>
-        <p class="lede">
-          Connect a Coinbase sandbox account with Mesh Link, approve the $50 USDC transfer, then read the portfolio data using the AWS-powered API in this repo.
-        </p>
-        <div id="status" class="status"></div>
+    <div class="page-shell">
+      <header class="top-nav">
+        <div class="brand">
+          <div class="brand-mark">M</div>
+          <div class="brand-copy">
+            <p class="brand-title">Mesh AWS Demo</p>
+            <p class="brand-subtitle">Serverless sandbox experience</p>
+          </div>
+        </div>
+        <nav class="nav-links">
+          <a href="#workflow">Journey</a>
+          <a href="#portfolio">Portfolio</a>
+          <a href="#responses">Responses</a>
+        </nav>
       </header>
 
-      <section class="card">
-        <h2>1. Connect to Coinbase via Mesh Link</h2>
-        <p>
-          Fetch a Link token from the Lambda API and launch Mesh Web Link. Use sandbox MFA code <code>123456</code> when prompted.
-        </p>
-        <button id="connect-btn" class="primary">Launch Mesh Link</button>
-        <div id="link-diagnostics" class="note"></div>
-      </section>
+      <main class="layout" id="workflow">
+        <header class="hero">
+          <span class="hero-badge">AWS + Mesh Sandbox</span>
+          <h1>Kick off Mesh Link and see the data flow.</h1>
+          <p class="lede">
+            Powered by the Web Link SDK, AWS Lambda, and API Gateway — follow the three steps to complete the demo transfer.
+          </p>
+        </header>
 
-      <section class="card">
-        <h2>2. Pay for the $50 shoes</h2>
-        <p>
-          Request a transfer-configured Link token. Mesh Link will open ready to approve the USDC payment to the demo wallet.
-        </p>
-        <button id="pay-btn" class="primary">Pay $50 in USDC</button>
-        <div class="note">
-          Defaults use Ethereum network <code>e3c7fdd8-b1fc-4e51-85ae-bb276e075611</code> and wallet <code>0x0Ff0000f0A0f0000F0F000000000ffFf00f0F0f0</code> from your Mesh sandbox config.
-        </div>
-      </section>
+        <div class="workflow-grid">
+          <div class="workflow-column workflow-left">
+          <section class="card step-card">
+            <span class="step-pill">
+              <span>Step 1</span>
+            </span>
+            <div class="step-heading">
+              <h2>Connect your Coinbase sandbox</h2>
+            </div>
+            <p>
+              Fetch a Link token from the AWS API, launch Mesh Link, and connect with the sandbox credentials. Use MFA code <code>123456</code> when prompted.
+            </p>
+            <button id="connect-btn" class="cta-button">
+              <span aria-hidden="true">🔗</span>
+              Launch Mesh Link
+            </button>
+            <div id="link-diagnostics" class="note"></div>
+          </section>
 
-      <section class="card">
-        <h2>3. Show the Coinbase portfolio</h2>
-        <p>
-          The latest access token is stored below after a successful connection. Use it to fetch balances and positions.
-        </p>
-        <textarea id="access-token" rows="3" readonly placeholder="Connect first to populate the access token."></textarea>
-        <div class="form-row">
-          <label>
-            Account ID (optional)
-            <input id="account-id" placeholder="Auto-selected from Mesh payload" autocomplete="off">
-          </label>
-          <label>
-            Portfolio type
-            <input id="portfolio-type" value="coinbase" autocomplete="off">
-          </label>
+          <section class="card step-card">
+            <span class="step-pill">
+              <span>Step 2</span>
+            </span>
+            <div class="step-heading">
+              <h2>Approve the $50 USDC checkout</h2>
+            </div>
+            <p>
+              Generate a transfer-configured Link token to open Mesh Link in a checkout-ready state, or reuse the stored access token if you already connected.
+            </p>
+            <div class="callout-list">
+              <p><strong>Destination:</strong> <code>0x0Ff0000f0A0f0000F0F000000000ffFf00f0F0f0</code></p>
+              <p><strong>Network:</strong> Ethereum&nbsp;sandbox&nbsp;(
+                <code>e3c7fdd8-b1fc-4e51-85ae-bb276e075611</code>
+              )</p>
+            </div>
+            <button id="pay-btn" class="cta-button accent">
+              <span aria-hidden="true">💸</span>
+              Pay $50 in USDC
+            </button>
+            <button type="button" class="text-link">Default transfer settings</button>
+          </section>
         </div>
-        <button id="portfolio-btn" class="secondary">Read Portfolio</button>
-      </section>
 
-      <section class="card output">
-        <div class="output-header">
-          <h2>API responses</h2>
-          <button id="clear-output" class="link-like" type="button">Clear</button>
+        <div class="workflow-column workflow-right">
+          <section class="card step-card portfolio-card" id="portfolio">
+            <span class="step-pill">
+              <span>Step 3</span>
+            </span>
+            <div class="step-heading">
+              <h2>Explore the linked portfolio</h2>
+            </div>
+            <p>
+              Tokens and account details populate automatically after a successful connection. Adjust the controls to experiment with different portfolio queries.
+            </p>
+            <label class="text-label">
+              Latest access token
+              <textarea id="access-token" rows="5" readonly placeholder="Connect first to populate the access token."></textarea>
+            </label>
+            <div class="form-row">
+              <label>
+                Account ID (optional)
+                <input id="account-id" placeholder="Auto-selected from Mesh payload" autocomplete="off">
+              </label>
+              <label>
+                Portfolio type
+                <input id="portfolio-type" value="coinbase" autocomplete="off">
+              </label>
+            </div>
+            <div class="portfolio-actions">
+              <button id="portfolio-btn" class="secondary cta-button dark">
+                <span aria-hidden="true">📊</span>
+                Read Portfolio
+              </button>
+              <p class="hint">Responses stream into the panel below for quick inspection.</p>
+            </div>
+          </section>
         </div>
-        <pre id="out" aria-live="polite"></pre>
-      </section>
-    </main>
+      </div>
+
+        <section class="card output" id="responses">
+          <span class="section-tag">Diagnostics</span>
+          <div class="output-header">
+            <h2>Inspect API responses and events in real time.</h2>
+            <button id="clear-output" class="link-like" type="button">🧹 Clear log</button>
+          </div>
+          <pre id="out" aria-live="polite">API responses will appear here after you interact with Mesh Link.</pre>
+        </section>
+      </main>
+    </div>
 
     <script type="module" src="app.js"></script>
   </body>

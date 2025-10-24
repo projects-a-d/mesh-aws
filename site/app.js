@@ -173,9 +173,54 @@ async function handleConnectClick() {
 
 async function handlePayClick() {
   if (!ensureConfigured()) return;
-  setStatus("Preparing transfer Link token...");
   setDiagnostics("");
   payBtn.disabled = true;
+
+  const authToken = (accessTokenInput?.value || state.latestAuthToken || "").trim();
+  const accountId = accountIdInput?.value.trim() || state.latestAccountId || "";
+
+  if (authToken) {
+    setStatus("Submitting transfer request with stored access token...");
+    let directFailed = false;
+    try {
+      const payload = { accessToken: authToken };
+      if (accountId) {
+        payload.accountId = accountId;
+      }
+      const resp = await meshPost("/mesh/link-token/pay", payload);
+      log("transfer/create", resp);
+      const transferStatus =
+        resp?.status ||
+        resp?.transferStatus ||
+        resp?.transfer?.status ||
+        resp?.transaction?.status;
+      if (transferStatus && transferStatus !== "success") {
+        const statusType = transferStatus === "pending" ? "info" : "error";
+        setStatus(
+          `Transfer finished with status ${transferStatus}`,
+          statusType
+        );
+      } else {
+        setStatus("USDC transfer completed via Mesh API.", "success");
+      }
+      window.alert("USDC transfer request sent using the stored access token.");
+      return;
+    } catch (err) {
+      console.error(err);
+      directFailed = true;
+      const msg = err.message ? `${err.message} — opening Mesh Link instead.` : "Transfer request failed — opening Mesh Link instead.";
+      setStatus(msg, "error");
+      setDiagnostics(err.details || err.message);
+    } finally {
+      payBtn.disabled = false;
+    }
+    if (!directFailed) {
+      return;
+    }
+    payBtn.disabled = true;
+  }
+
+  setStatus("Preparing transfer Link token...");
   try {
     const resp = await meshPost("/mesh/link-token/pay");
     log("link-token/pay", resp);

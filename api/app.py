@@ -215,13 +215,54 @@ def handler(event, context):
             # Legacy direct transfer flow
             transfer_payload = dict(body)
             transfer_payload.setdefault("memo", "Shoes")
-            transfer_payload.setdefault("asset", body.get("asset") or "USDC")
+            default_symbol = body.get("symbol") or body.get("asset") or "USDC"
+            transfer_payload.setdefault("asset", default_symbol)
+            transfer_payload.setdefault("symbol", default_symbol)
+
+            if not transfer_payload.get("amount") and not transfer_payload.get("amountInFiat"):
+                default_amount = body.get("amountInFiat") or body.get("amount") or 50
+                transfer_payload["amountInFiat"] = default_amount
+
+            # Prefer configured networkId/address defaults for sandbox demos
+            network_id = (
+                transfer_payload.get("networkId")
+                or body.get("networkId")
+                or cfg.get("ethereum_network_id")
+            )
+            if network_id:
+                transfer_payload.setdefault("networkId", network_id)
             transfer_payload.setdefault("network", body.get("network") or "ethereum")
+
+            default_destination = (
+                transfer_payload.get("destinationAddress")
+                or transfer_payload.get("toAddress")
+                or body.get("destinationAddress")
+                or body.get("toAddress")
+                or cfg.get("pay_to_address")
+            )
+            if default_destination:
+                transfer_payload.setdefault("destinationAddress", default_destination)
+                transfer_payload.setdefault("toAddress", default_destination)
+
+            if transfer_payload.get("accountId") == "":
+                transfer_payload.pop("accountId")
+
+            user_id = (
+                transfer_payload.get("userId")
+                or transfer_payload.get("userGuid")
+                or body.get("userId")
+                or cfg["default_user_id"]
+            )
+            if user_id:
+                transfer_payload.setdefault("userId", user_id)
+
             transfer_payload.setdefault("twoFactorCode", body.get("twoFactorCode") or cfg["default_mfa"])
             if cfg["client_id"] and "clientId" not in transfer_payload:
                 transfer_payload["clientId"] = cfg["client_id"]
             if cfg["customer_id"] and "customerId" not in transfer_payload and "customerGuid" not in transfer_payload:
                 transfer_payload["customerId"] = cfg["customer_id"]
+            if cfg["coinbase_integration_id"] and "integrationId" not in transfer_payload:
+                transfer_payload["integrationId"] = cfg["coinbase_integration_id"]
 
             status, transfer_body = mesh_request("POST", cfg["transfer_url"], cfg, payload=transfer_payload)
             if status >= 400:
